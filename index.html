@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Donate</title>
+  <style>
+    :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
+    body { margin: 0; padding: 0; background: #f7f7f9; }
+    .wrap { max-width: 520px; margin: 6vh auto; background: white; padding: 24px; border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,.06); }
+    h1 { margin: 0 0 8px; font-weight: 700; }
+    p.sub { margin-top: 0; color: #555; }
+    form { display: grid; gap: 12px; }
+    label { font-size: 14px; color: #333; }
+    input[type="number"], input[type="text"] {
+      width: 100%; padding: 12px 14px; border-radius: 10px; border: 1px solid #d9d9e3; font-size: 16px;
+      outline: none;
+    }
+    input[type="number"]:focus, input[type="text"]:focus { border-color: #4a7cff; box-shadow: 0 0 0 3px rgba(74,124,255,.15); }
+    button {
+      padding: 12px 16px; border: 0; border-radius: 10px; background: black; color: white; font-weight: 600; font-size: 16px; cursor: pointer;
+    }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .note { font-size: 12px; color: #666; }
+    .error { color: #b00020; font-size: 14px; display: none; white-space: pre-wrap; }
+    footer { text-align:center; margin-top: 16px; color: #666; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Make a Donation</h1>
+    <p class="sub">Use a credit/debit card or eligible prepaid/gift card. Powered by Stripe Checkout.</p>
+    <form id="donation-form">
+      <div class="row">
+        <div>
+          <label for="amount">Amount</label>
+          <input id="amount" name="amount" type="number" min="1" step="1" inputmode="numeric" placeholder="e.g., 25" required />
+        </div>
+        <div>
+          <label for="currency">Currency</label>
+          <input id="currency" name="currency" type="text" value="" placeholder="e.g., usd" />
+        </div>
+      </div>
+      <div>
+        <label for="note">Note (optional)</label>
+        <input id="note" name="note" type="text" maxlength="120" placeholder="e.g., In memory of… (shows on receipt)" />
+      </div>
+      <button type="submit" id="donateBtn">Donate</button>
+      <div id="error" class="error"></div>
+      <div class="note">Tip: Leave currency blank to use the site's default.</div>
+    </form>
+    <footer>
+      <div id="minmax"></div>
+    </footer>
+  </div>
+  <script>
+    (function() {
+      const form = document.getElementById('donation-form');
+      const btn = document.getElementById('donateBtn');
+      const err = document.getElementById('error');
+      const minmax = document.getElementById('minmax');
+
+      fetch('/api/create-checkout-session?meta=limits')
+        .then(r => r.ok ? r.json() : null).then(cfg => {
+          if (cfg && cfg.min && cfg.max && cfg.currency) {
+            minmax.textContent = `Minimum: ${cfg.min} ${cfg.currency.toUpperCase()} · Maximum: ${cfg.max} ${cfg.currency.toUpperCase()}`;
+          }
+          if (cfg && cfg.siteName) document.title = `Donate to ${cfg.siteName}`;
+          const currencyField = document.getElementById('currency');
+          if (currencyField && cfg && cfg.currency) {
+            currencyField.placeholder = cfg.currency;
+          }
+        }).catch(_ => {});
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        err.style.display = 'none';
+        btn.disabled = true;
+        try {
+          const amount = parseFloat(document.getElementById('amount').value);
+          const currency = (document.getElementById('currency').value || '').trim();
+          const note = (document.getElementById('note').value || '').trim();
+          const res = await fetch('/api/create-checkout-session', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ amount, currency, note })
+          });
+          const text = await res.text();
+          if (!res.ok) throw new Error(text || 'Failed to create session');
+          const data = JSON.parse(text);
+          if (data && data.url) {
+            window.location.href = data.url;
+          } else {
+            throw new Error('Unexpected response');
+          }
+        } catch (e) {
+          err.textContent = e.message || 'Something went wrong';
+          err.style.display = 'block';
+          btn.disabled = false;
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
